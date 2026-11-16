@@ -313,6 +313,18 @@ VaMappingHandle create_va_mapping_handle(
     CUdeviceptr ptr, const MemAllocationHandle &h_alloc, const VaReservationHandle &h_res
 );
 
+// Like create_va_mapping_handle, but apply `descs` instead of the
+// allocation's own descriptors. A multicast object is shared by processes
+// that each map it for their own devices, so its access is chosen per
+// mapping. The descriptors are applied once and not stored.
+VaMappingHandle create_va_mapping_handle_with_access(
+    CUdeviceptr ptr,
+    const MemAllocationHandle &h_alloc,
+    const VaReservationHandle &h_res,
+    const CUmemAccessDesc *descs,
+    size_t count
+);
+
 // Mapping accessors.
 size_t va_mapping_size(const VaMappingHandle &h) noexcept;
 MemAllocationHandle va_mapping_allocation(const VaMappingHandle &h) noexcept;
@@ -332,6 +344,29 @@ VmmRangeHandle vmm_range(const DevicePtrHandle &h) noexcept;
 // synchronization.
 std::vector<VaMappingHandle> vmm_range_mappings(const VmmRangeHandle &range);  // may throw
 size_t vmm_range_total(const VmmRangeHandle &range) noexcept;
+
+// Multicast objects (VMM_DESIGN.md, "Multicast"). A multicast object is a
+// CUmemGenericAllocationHandle like a physical allocation: it is mapped,
+// exported, imported and released with the same calls, so it is held in a
+// MemAllocationHandle with no access descriptors, and its size is prop.size.
+// Returns empty handle on error (caller must check).
+MemAllocationHandle create_multicast_handle(const CUmulticastObjectProp &prop);
+
+// Bind `size` bytes of the physical allocation `h_mem`, starting at
+// `mem_offset`, into the multicast object `h_mc` at `mc_offset` via
+// cuMulticastBindMem. `device` is the device that owns `h_mem`; the unbind
+// needs it. The binding holds both handles, so neither is released while it
+// is bound; the last reference calls cuMulticastUnbind. The bind blocks until
+// every device the multicast object was created for has been added. Returns
+// empty handle on error (caller must check).
+MulticastBindingHandle create_multicast_binding_handle(
+    const MemAllocationHandle &h_mc,
+    size_t mc_offset,
+    const MemAllocationHandle &h_mem,
+    size_t mem_offset,
+    size_t size,
+    CUdevice device
+);
 
 // Create a device pointer handle whose box owns a range (an empty range for
 // a size-zero buffer). The box records no deallocation stream; set one with

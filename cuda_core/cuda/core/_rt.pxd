@@ -70,10 +70,13 @@ cdef extern from "_cpp/rt/handles.hpp" namespace "cuda_core::rt":
         pass
     cppclass VmmRange "cuda_core::rt::VmmRange":
         pass
+    cppclass MulticastBindingValue "cuda_core::rt::MulticastBindingValue":
+        pass
     ctypedef shared_ptr[const MemAllocationValue] MemAllocationHandle
     ctypedef shared_ptr[const VaReservationValue] VaReservationHandle
     ctypedef shared_ptr[const VaMappingValue] VaMappingHandle
     ctypedef shared_ptr[const VmmRange] VmmRangeHandle
+    ctypedef shared_ptr[const MulticastBindingValue] MulticastBindingHandle
 
     # Type-erased shared owner for resources attached to graph node slots.
     # Typed handles above assign directly to an OpaqueHandle (shared control
@@ -128,6 +131,7 @@ cdef extern from "_cpp/rt/handles.hpp" namespace "cuda_core::rt":
     cydriver.CUmemGenericAllocationHandle as_cu(MemAllocationHandle h) noexcept nogil
     cydriver.CUdeviceptr as_cu(VaReservationHandle h) noexcept nogil
     cydriver.CUdeviceptr as_cu(VaMappingHandle h) noexcept nogil
+    cydriver.CUmemGenericAllocationHandle as_cu(MulticastBindingHandle h) noexcept nogil
 
     # as_intptr() - extract handle as intptr_t for Python interop (inline C++)
     intptr_t as_intptr(ContextHandle h) noexcept nogil
@@ -317,6 +321,10 @@ cdef long long live_va_reservation_count() noexcept nogil
 cdef VaMappingHandle create_va_mapping_handle(
     cydriver.CUdeviceptr ptr, const MemAllocationHandle& h_alloc,
     const VaReservationHandle& h_res) except+ nogil
+cdef VaMappingHandle create_va_mapping_handle_with_access(
+    cydriver.CUdeviceptr ptr, const MemAllocationHandle& h_alloc,
+    const VaReservationHandle& h_res, const cydriver.CUmemAccessDesc* descs,
+    size_t count) except+ nogil
 cdef size_t va_mapping_size(const VaMappingHandle& h) noexcept nogil
 cdef MemAllocationHandle va_mapping_allocation(const VaMappingHandle& h) noexcept nogil
 cdef VmmRangeHandle create_vmm_range(const vector[VaMappingHandle]& mappings) except+ nogil
@@ -325,6 +333,14 @@ cdef vector[VaMappingHandle] vmm_range_mappings(const VmmRangeHandle& range) exc
 cdef size_t vmm_range_total(const VmmRangeHandle& range) noexcept nogil
 cdef DevicePtrHandle deviceptr_create_vmm(
     cydriver.CUdeviceptr base, const VmmRangeHandle& range) except+ nogil
+
+# Multicast objects (VMM_DESIGN.md, "Multicast")
+cdef MemAllocationHandle create_multicast_handle(
+    const cydriver.CUmulticastObjectProp& prop) except+ nogil
+cdef MulticastBindingHandle create_multicast_binding_handle(
+    const MemAllocationHandle& h_mc, size_t mc_offset,
+    const MemAllocationHandle& h_mem, size_t mem_offset, size_t size,
+    cydriver.CUdevice device) except+ nogil
 
 # Library handles
 cdef LibraryHandle create_library_handle_from_file(const char* path) except+ nogil

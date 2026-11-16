@@ -145,6 +145,7 @@ const WarnOnFailure<p_cuMemFreeHost> pw_cuMemFreeHost{"cuMemFreeHost"};
 const WarnOnFailure<p_cuMemRelease> pw_cuMemRelease{"cuMemRelease"};
 const WarnOnFailure<p_cuMemUnmap> pw_cuMemUnmap{"cuMemUnmap"};
 const WarnOnFailure<p_cuMemAddressFree> pw_cuMemAddressFree{"cuMemAddressFree"};
+const WarnOnFailure<p_cuMulticastUnbind> pw_cuMulticastUnbind{"cuMulticastUnbind"};
 const WarnOnFailure<p_cuGraphDestroy> pw_cuGraphDestroy{"cuGraphDestroy"};
 const WarnOnFailure<p_cuGraphExecDestroy> pw_cuGraphExecDestroy{"cuGraphExecDestroy"};
 const WarnOnFailure<p_cuGraphicsUnregisterResource> pw_cuGraphicsUnregisterResource{"cuGraphicsUnregisterResource"};

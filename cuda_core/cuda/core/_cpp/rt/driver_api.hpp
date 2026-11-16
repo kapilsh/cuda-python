@@ -136,6 +136,10 @@ namespace cuda_core::rt {
     X(cuMemUnmap, 10020)                                                        \
     X(cuMemSetAccess, 10020)                                                    \
     X(cuMemImportFromShareableHandle, 10020)                                    \
+    /* Multicast objects (VMM_DESIGN.md, "Multicast") */                        \
+    X(cuMulticastCreate, 12010)                                                 \
+    X(cuMulticastBindMem, 12010)                                                \
+    X(cuMulticastUnbind, 12010)                                                 \
     /* cuda-bindings requests 7000 (PTDS) or 2000 (legacy) */                   \
     X(cuStreamSynchronize, 7000)                                                \
     X(cuStreamIsCapturing, 10000)                                               \
