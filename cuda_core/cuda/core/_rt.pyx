@@ -197,6 +197,10 @@ cdef extern from "_cpp/rt/rt.hpp" namespace "cuda_core::rt":
     VaMappingHandle create_va_mapping_handle "cuda_core::rt::create_va_mapping_handle" (
         cydriver.CUdeviceptr ptr, const MemAllocationHandle& h_alloc,
         const VaReservationHandle& h_res) except+ nogil
+    VaMappingHandle create_va_mapping_handle_with_access "cuda_core::rt::create_va_mapping_handle_with_access" (
+        cydriver.CUdeviceptr ptr, const MemAllocationHandle& h_alloc,
+        const VaReservationHandle& h_res, const cydriver.CUmemAccessDesc* descs,
+        size_t count) except+ nogil
     size_t va_mapping_size "cuda_core::rt::va_mapping_size" (const VaMappingHandle& h) noexcept nogil
     MemAllocationHandle va_mapping_allocation "cuda_core::rt::va_mapping_allocation" (
         const VaMappingHandle& h) noexcept nogil
@@ -208,6 +212,14 @@ cdef extern from "_cpp/rt/rt.hpp" namespace "cuda_core::rt":
     size_t vmm_range_total "cuda_core::rt::vmm_range_total" (const VmmRangeHandle& range) noexcept nogil
     DevicePtrHandle deviceptr_create_vmm "cuda_core::rt::deviceptr_create_vmm" (
         cydriver.CUdeviceptr base, const VmmRangeHandle& range) except+ nogil
+
+    # Multicast objects (VMM_DESIGN.md, "Multicast")
+    MemAllocationHandle create_multicast_handle "cuda_core::rt::create_multicast_handle" (
+        const cydriver.CUmulticastObjectProp& prop) except+ nogil
+    MulticastBindingHandle create_multicast_binding_handle "cuda_core::rt::create_multicast_binding_handle" (
+        const MemAllocationHandle& h_mc, size_t mc_offset,
+        const MemAllocationHandle& h_mem, size_t mem_offset, size_t size,
+        cydriver.CUdevice device) except+ nogil
 
     # Library handles
     LibraryHandle create_library_handle_from_file "cuda_core::rt::create_library_handle_from_file" (

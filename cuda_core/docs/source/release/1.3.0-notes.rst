@@ -156,6 +156,30 @@ New features
   CI in this release.
   (`#2980 <https://github.com/NVIDIA/cuda-python/issues/2980>`__)
 
+- Added :class:`MulticastObject`, a CUDA multicast object that binds the
+  :class:`VirtualMemoryBuffer` memory of several devices behind one address.
+  :class:`MulticastObjectOptions` sets the number of devices, the size, the
+  handle type (``"fabric"`` or ``None``) and the granularity, and
+  :meth:`MulticastObject.get_granularity` queries the granularity before
+  creation. :meth:`MulticastObject.add_device` adds a device without blocking;
+  :meth:`MulticastObject.bind` binds every physical allocation behind a
+  buffer, including a buffer grown with
+  :meth:`VirtualMemoryResource.modify_allocation`, and returns a
+  :class:`MulticastBinding` that unbinds when closed; and
+  :meth:`MulticastObject.map` returns a :class:`MulticastBuffer` at the
+  multicast address for the ``multimem`` PTX instructions. Binding and mapping
+  block until every device has been added, with no timeout, so participants
+  should agree that every ``add_device`` succeeded first. With ``"fabric"``,
+  :attr:`MulticastObject.ipc_descriptor` is a plain-data
+  :class:`MulticastObjectDescriptor` that ``pickle`` carries, and
+  :meth:`MulticastObject.from_ipc_descriptor` imports it. The object, its
+  bindings and its mapped buffers hold their own references and can be closed
+  in any order. Imported memory cannot be bound, and an imported multicast
+  object cannot be exported again. Needs a CUDA 12.1 or newer driver and
+  devices with ``multicast_supported``; like fabric sharing, it was validated
+  on NVIDIA internal hardware and is not covered by the project's CI.
+  (`#2980 <https://github.com/NVIDIA/cuda-python/issues/2980>`__)
+
 Fixes and enhancements
 ----------------------
 

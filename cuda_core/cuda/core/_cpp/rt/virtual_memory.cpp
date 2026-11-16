@@ -55,6 +55,15 @@ struct VaMappingBox {
     VaReservationHandle h_reservation;  // freed after the unmap
 };
 
+struct MulticastBindingBox {
+    MulticastBindingValue resource;  // the multicast object's handle
+    CUdevice device;                 // owner of h_mem; cuMulticastUnbind needs it
+    size_t mc_offset;                // where h_mem is bound in the multicast object
+    size_t size;                     // bound bytes
+    MemAllocationHandle h_mc;        // released after the unbind
+    MemAllocationHandle h_mem;       // released after the unbind
+};
+
 // Recover a box from the aliased handle; the resource is the first member.
 template <typename Box, typename Handle>
 const Box *
@@ -179,13 +188,18 @@ va_reservation_size(const VaReservationHandle &h) noexcept
 // Mappings
 // ============================================================================
 
+namespace {
+
+// Map the whole allocation at ptr inside the reservation and apply `descs`.
 VaMappingHandle
-create_va_mapping_handle(CUdeviceptr ptr, const MemAllocationHandle &h_alloc, const VaReservationHandle &h_res)
+map_allocation(
+    CUdeviceptr ptr,
+    const MemAllocationHandle &h_alloc,
+    const VaReservationHandle &h_res,
+    const CUmemAccessDesc *descs,
+    size_t count
+)
 {
-    if (!h_alloc || !h_res) {
-        err = CUDA_ERROR_INVALID_VALUE;
-        return {};
-    }
     const auto *alloc = box_of<MemAllocationBox>(h_alloc);
     const auto *res = box_of<VaReservationBox>(h_res);
     const CUdeviceptr base = res->resource.raw;
@@ -200,9 +214,8 @@ create_va_mapping_handle(CUdeviceptr ptr, const MemAllocationHandle &h_alloc, co
     }
     // cuMemSetAccess rejects an empty descriptor list; a mapping with no
     // descriptors is mapped but not accessible, which is what the caller asked for.
-    if (!alloc->access.empty()) {
-        const CUresult status =
-            DRIVER_CALL(cuMemSetAccess, ptr, alloc->size, alloc->access.data(), alloc->access.size());
+    if (count != 0) {
+        const CUresult status = DRIVER_CALL(cuMemSetAccess, ptr, alloc->size, descs, count);
         if (status != CUDA_SUCCESS) {
             pw_cuMemUnmap(ptr, alloc->size);
             err = status;
@@ -222,6 +235,35 @@ create_va_mapping_handle(CUdeviceptr ptr, const MemAllocationHandle &h_alloc, co
     return VaMappingHandle(box, &box->resource);
 }
 
+}  // namespace
+
+VaMappingHandle
+create_va_mapping_handle(CUdeviceptr ptr, const MemAllocationHandle &h_alloc, const VaReservationHandle &h_res)
+{
+    if (!h_alloc || !h_res) {
+        err = CUDA_ERROR_INVALID_VALUE;
+        return {};
+    }
+    const auto &access = box_of<MemAllocationBox>(h_alloc)->access;
+    return map_allocation(ptr, h_alloc, h_res, access.data(), access.size());
+}
+
+VaMappingHandle
+create_va_mapping_handle_with_access(
+    CUdeviceptr ptr,
+    const MemAllocationHandle &h_alloc,
+    const VaReservationHandle &h_res,
+    const CUmemAccessDesc *descs,
+    size_t count
+)
+{
+    if (!h_alloc || !h_res || (count != 0 && descs == nullptr)) {
+        err = CUDA_ERROR_INVALID_VALUE;
+        return {};
+    }
+    return map_allocation(ptr, h_alloc, h_res, descs, count);
+}
+
 size_t
 va_mapping_size(const VaMappingHandle &h) noexcept
 {
@@ -232,6 +274,59 @@ MemAllocationHandle
 va_mapping_allocation(const VaMappingHandle &h) noexcept
 {
     return h ? box_of<VaMappingBox>(h)->h_alloc : MemAllocationHandle{};
+}
+
+// ============================================================================
+// Multicast objects
+// ============================================================================
+
+MemAllocationHandle
+create_multicast_handle(const CUmulticastObjectProp &prop)
+{
+    GILReleaseGuard gil;
+    CUmemGenericAllocationHandle handle = 0;
+    if (CUDA_SUCCESS != (err = DRIVER_CALL(cuMulticastCreate, &handle, &prop))) {
+        return {};
+    }
+    return wrap_mem_allocation(handle, prop.size, {}, false);
+}
+
+MulticastBindingHandle
+create_multicast_binding_handle(
+    const MemAllocationHandle &h_mc,
+    size_t mc_offset,
+    const MemAllocationHandle &h_mem,
+    size_t mem_offset,
+    size_t size,
+    CUdevice device
+)
+{
+    if (!h_mc || !h_mem) {
+        err = CUDA_ERROR_INVALID_VALUE;
+        return {};
+    }
+    // Allocate the box before binding so a failed allocation leaves nothing bound.
+    auto owned = std::make_unique<MulticastBindingBox>(
+        MulticastBindingBox{{as_cu(h_mc)}, device, mc_offset, size, h_mc, h_mem}
+    );
+    GILReleaseGuard gil;
+    if (CUDA_SUCCESS !=
+        (err = DRIVER_CALL(cuMulticastBindMem, as_cu(h_mc), mc_offset, as_cu(h_mem), mem_offset, size, 0))) {
+        return {};
+    }
+    // If the control block cannot be allocated, shared_ptr runs the deleter,
+    // which unbinds.
+    // clang-format off
+    auto box = std::shared_ptr<const MulticastBindingBox>(
+        owned.release(),
+        [](const MulticastBindingBox *b) {
+            GILReleaseGuard gil;
+            pw_cuMulticastUnbind(b->resource.raw, b->device, b->mc_offset, b->size);
+            delete b;  // then the multicast object and the memory release
+        }
+    );
+    // clang-format on
+    return MulticastBindingHandle(box, &box->resource);
 }
 
 // ============================================================================

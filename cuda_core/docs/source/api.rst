@@ -87,6 +87,10 @@ Memory management
    ManagedMemoryResource
    LegacyPinnedMemoryResource
    VirtualMemoryResource
+   MulticastObject
+   MulticastBinding
+   MulticastBuffer
+   MulticastObjectDescriptor
 
    :template: dataclass.rst
 
@@ -94,6 +98,7 @@ Memory management
    PinnedMemoryResourceOptions
    ManagedMemoryResourceOptions
    VirtualMemoryResourceOptions
+   MulticastObjectOptions
 
 A :class:`Buffer` records the stream that will order its eventual deallocation.
 Use :meth:`Buffer.set_deallocation_stream` to replace that stream without
@@ -102,6 +107,16 @@ the caller must order allocation and every access before the deallocation,
 using events or other CUDA synchronization mechanisms as needed. See
 :cuda-core-example:`buffer_deallocation_stream.py <buffer_deallocation_stream.py>`
 for a complete example.
+
+A :class:`MulticastObject` binds the :class:`VirtualMemoryBuffer` memory of
+several devices behind one address. Kernels reach every bound buffer at once
+through the :class:`MulticastBuffer` that :meth:`MulticastObject.map` returns,
+with the ``multimem`` PTX instructions. One process creates the object and
+shares :attr:`MulticastObject.ipc_descriptor`; the others import it with
+:meth:`MulticastObject.from_ipc_descriptor`. Every participant then calls
+:meth:`MulticastObject.add_device`, agrees with the others that all of them
+succeeded, and calls :meth:`MulticastObject.bind` and
+:meth:`MulticastObject.map`, which block until every device has been added.
 
 
 CUDA compilation toolchain

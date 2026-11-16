@@ -336,6 +336,83 @@ The types are available in both supported bindings majors; no version gate
 is needed. Sharing is supported on one node; multi-node IMEX sharing is out
 of scope and untested. Tracked on the VMM epic (#2980).
 
+## Multicast
+
+A `MulticastObject` binds the physical memory of several devices behind one address. It lives in
+`cuda/core/_memory/_multicast.pyx` and adds two factories and one handle to this layer.
+
+### Driver behavior the design relies on
+
+- `cuMulticastCreate(prop)` returns a `CUmemGenericAllocationHandle` with one reference. Like a
+  physical allocation it is mapped with `cuMemMap` (whole object, offset 0), exported with
+  `cuMemExportToShareableHandle`, imported with `cuMemImportFromShareableHandle`, and released
+  with `cuMemRelease`. `prop.size` must be a multiple of `cuMulticastGetGranularity`.
+- `cuMulticastAddDevice(mc, dev)` does not block. `cuMulticastBindMem(mc, mc_offset, mem,
+  mem_offset, size, 0)` and `cuMemMap` of the multicast object block until all `numDevices`
+  devices have been added, with no timeout. Offsets and sizes are multiples of the minimum
+  multicast granularity.
+- `cuMulticastUnbind(mc, dev, mc_offset, size)` names the device that owns the memory and needs
+  the memory to still be alive. It is not stream-ordered.
+- None of these need a current context.
+
+### Handles
+
+| Handle | Box | Deleter | Depends on |
+|---|---|---|---|
+| multicast object: `MemAllocationHandle` | `MemAllocationBox` with no descriptors | `pw_cuMemRelease` | nothing |
+| `MulticastBindingHandle` | `{mc handle, device, mc_offset, size, h_mc, h_mem}` | `pw_cuMulticastUnbind`, then the members release | multicast object, physical allocation |
+
+```
+MemAllocationHandle    create_multicast_handle(const CUmulticastObjectProp& prop);
+MulticastBindingHandle create_multicast_binding_handle(const MemAllocationHandle& h_mc, size_t mc_offset,
+                                                       const MemAllocationHandle& h_mem, size_t mem_offset,
+                                                       size_t size, CUdevice device);
+VaMappingHandle        create_va_mapping_handle_with_access(CUdeviceptr ptr, const MemAllocationHandle& h_alloc,
+                                                            const VaReservationHandle& h_res,
+                                                            const CUmemAccessDesc* descs, size_t count);
+```
+
+Holding the multicast object in a `MemAllocationHandle` lets the existing import, reservation,
+mapping and range code serve it unchanged. Its box carries no access descriptors: one multicast
+object is shared by processes that each map it for their own devices, so `map()` passes the
+descriptors per mapping through `create_va_mapping_handle_with_access`, which applies them once
+and does not store them. `create_va_mapping_handle` is the same call with the allocation's own
+descriptors.
+
+The binding box allocates before `cuMulticastBindMem`, so a failed allocation binds nothing; if
+the `shared_ptr` control block cannot be allocated after the bind, `shared_ptr` runs the deleter,
+which unbinds. `cuMulticastUnbind`, `cuMulticastCreate` and `cuMulticastBindMem` (the CUDA 12.1
+entry point, which both bindings majors resolve; CUDA 13.1's `_v2` is not needed) join the
+function table. `cuMulticastAddDevice`, `cuMulticastGetGranularity` and the export are plain
+Cython calls, as the buffer export is. Every entry point checks for a CUDA 12.1 driver first.
+
+### The Python objects
+
+- `MulticastObject` holds one `MemAllocationHandle`. `close()` drops it; nothing else.
+- `bind(buffer)` walks the buffer's range and creates one binding per physical allocation that
+  covers the requested size, at consecutive multicast offsets, so a buffer grown with
+  `modify_allocation` binds whole. Imported allocations are refused before any driver call
+  (`mem_allocation_is_imported`), as are host-located resources and offsets or sizes that are not
+  multiples of the minimum granularity. A failure unbinds what the call already bound by letting
+  its locals die. `MulticastBinding` owns the vector of bindings; `close()` clears it.
+- `map(device)` reserves the object's size aligned to its granularity, maps it with read-write
+  access for `device`, builds a one-mapping range and a VMM device pointer, and records the
+  deallocation stream as `VirtualMemoryResource.allocate()` does. The result is a
+  `MulticastBuffer` with no memory resource; its `close()` refuses a capturing stream like
+  `VirtualMemoryBuffer.close()`, and it cannot be exported or pickled.
+- `ipc_descriptor` exports the 64-byte fabric handle (zeroed first, as for buffers) into a
+  plain-data `MulticastObjectDescriptor` with the size and device count;
+  `from_ipc_descriptor()` imports it into a `MemAllocationBox` marked imported, which cannot be
+  exported again.
+
+### Invariants
+
+1. A binding unbinds exactly once, before the multicast object and the bound memory release.
+2. The multicast object is released after its last binding and its last mapping, in any close
+   order of the object, its bindings and its buffers.
+3. A failed `bind()` leaves nothing bound; a failed `map()` leaves nothing reserved or mapped.
+4. Every mapping of a multicast object grants access only to the device it was mapped for.
+
 ## Why `modify_allocation` returns a new buffer
 
 The input buffer stays open and aliases the result. The chunks the input already mapped are

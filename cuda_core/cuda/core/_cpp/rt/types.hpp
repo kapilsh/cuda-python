@@ -42,6 +42,7 @@ enum HandleTag : int {
     kTagMemAllocation,
     kTagVaReservation,
     kTagVaMapping,
+    kTagMulticastBinding,
 };
 
 using NvvmProgramValue = TaggedHandle<nvvmProgram, kTagNvvmProgram>;
@@ -61,6 +62,10 @@ using SurfObjectValue = TaggedHandle<CUsurfObject, kTagSurfObject>;
 using MemAllocationValue = TaggedHandle<CUmemGenericAllocationHandle, kTagMemAllocation>;
 using VaReservationValue = TaggedHandle<CUdeviceptr, kTagVaReservation>;
 using VaMappingValue = TaggedHandle<CUdeviceptr, kTagVaMapping>;
+// A binding of physical memory into a multicast object (cuMulticastBindMem).
+// The value is the multicast object's handle, which names the binding in
+// reports; the box holds the rest (VMM_DESIGN.md, "Multicast").
+using MulticastBindingValue = TaggedHandle<CUmemGenericAllocationHandle, kTagMulticastBinding>;
 
 // ============================================================================
 // Handle type aliases - expose only the raw CUDA resource
@@ -97,6 +102,7 @@ using VaReservationHandle = std::shared_ptr<const VaReservationValue>;
 using VaMappingHandle = std::shared_ptr<const VaMappingValue>;
 using VmmRange = std::vector<VaMappingHandle>;
 using VmmRangeHandle = std::shared_ptr<const VmmRange>;
+using MulticastBindingHandle = std::shared_ptr<const MulticastBindingValue>;
 
 using DevicePtrHandle = std::shared_ptr<const CUdeviceptr>;
 
@@ -286,6 +292,12 @@ as_cu(const VaReservationHandle &h) noexcept
 
 inline CUdeviceptr
 as_cu(const VaMappingHandle &h) noexcept
+{
+    return h ? h->raw : 0;
+}
+
+inline CUmemGenericAllocationHandle
+as_cu(const MulticastBindingHandle &h) noexcept
 {
     return h ? h->raw : 0;
 }

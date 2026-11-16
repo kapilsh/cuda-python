@@ -16,6 +16,8 @@ from ._managed_buffer import *
 from ._managed_buffer import __all__ as _managed_buffer_all
 from ._managed_memory_resource import *
 from ._managed_memory_resource import __all__ as _managed_memory_resource_all
+from ._multicast import *
+from ._multicast import __all__ as _multicast_all
 from ._pinned_memory_resource import *
 from ._pinned_memory_resource import __all__ as _pinned_memory_resource_all
 from ._virtual_memory_resource import *
@@ -29,6 +31,7 @@ __all__ = [
     *_legacy_all,
     *_managed_buffer_all,
     *_managed_memory_resource_all,
+    *_multicast_all,
     *_pinned_memory_resource_all,
     *_virtual_memory_resource_all,
 ]
